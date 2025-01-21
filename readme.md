@@ -1,6 +1,6 @@
 # Instructions for Improving the Code
 
-Your task is to analyze and refactor the given code to improve its encapsulation, adherence to the Law of Demeter, avoidance of God objects, and elimination of code duplication (DRY). 
+Your task is to analyze and refactor the given code to improve its encapsulation, adherence to the Law of Demeter, avoidance of God objects, applying "ask-don't-tell" and elimination of code duplication (DRY). 
 Below are the specific instructions to guide your refactoring process:
 
 ## 1. Encapsulation
