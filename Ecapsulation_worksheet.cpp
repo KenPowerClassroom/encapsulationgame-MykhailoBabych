@@ -37,8 +37,6 @@ public:
     }
 
     std::string getName() const { return name; }
-    
-    int getHealth() const { return health; }
 
     bool isAlive() const {
         return health > 0;
@@ -48,29 +46,35 @@ public:
         return currentWeapon != nullptr;
     }
 
-    // Character knows how to attack another character
-    void attackTarget(Character& target) {
-        if (!currentWeapon) return;
+    // Tell the character to attack - it handles everything internally
+    bool performAttack(Character& target) {
+        if (!currentWeapon) return false;
         
         int totalDamage = currentWeapon->getDamage() * strength;
         std::cout << name << " attacks " << target.getName() 
                   << " with " << currentWeapon->getName() << "\n";
-        target.takeDamage(totalDamage);
-        std::cout << target.getName() << " health: " << target.getHealth() << "\n";
+        target.receiveDamage(totalDamage);
+        return true;
     }
 
-    void takeDamage(int damage) {
+    // Tell the character to receive damage - it handles the logic
+    void receiveDamage(int damage) {
         health -= damage;
         if (health < 0) health = 0;
-        std::cout << name << " take damage " << damage << "\n";
+        std::cout << name << " takes damage " << damage << ". Health: " << health << "\n";
     }
 
-    // Character knows how to heal itself
-    void heal(int amount) {
+    // Tell the character to heal - it decides if healing is valid
+    void applyHealing(int amount) {
         if (health > 0) {
             health += amount;
-            std::cout << name << " healed by " << amount << " points.\n";
+            std::cout << name << " healed by " << amount << " points. Health: " << health << "\n";
         }
+    }
+
+    // Tell the character to announce defeat
+    void announceDefeat() {
+        std::cout << name << " has been defeated.\n";
     }
 };
 
@@ -78,6 +82,12 @@ class Player : public Character {
 public:
     Player(const std::string& playerName, int playerHealth, int characterStrength)
         :Character(playerName, playerHealth, characterStrength) {}
+
+    // Player knows how to apply random healing to itself
+    void applyRandomHealing() {
+        int healAmount = std::rand() % 50 + 1;
+        applyHealing(healAmount);
+    }
 };
 
 class Enemy : public Character {
@@ -86,7 +96,7 @@ public:
         :Character(EnemyName, EnemyHealth, characterStrength) {}
 };
 
-// New class: Manages weapon inventory
+// Manages weapon inventory
 class WeaponManager {
 private:
     std::vector<Weapon> weapons;
@@ -96,64 +106,77 @@ public:
         weapons.push_back(weapon);
     }
 
-    void equipWeapon(Character& character, int weaponIndex) {
+    // Tell the manager to equip a weapon - it handles validation
+    bool equipWeaponToCharacter(Character& character, int weaponIndex) {
         if (weaponIndex >= 0 && weaponIndex < weapons.size()) {
             character.setWeapon(&weapons[weaponIndex]);
+            return true;
         }
+        return false;
     }
 
-    void equipRandomWeapon(Character& character) {
-        if (weapons.empty()) return;
+    // Tell the manager to equip a random weapon
+    bool equipRandomWeaponToCharacter(Character& character) {
+        if (weapons.empty()) return false;
         
         int randomIndex = std::rand() % weapons.size();
         character.setWeapon(&weapons[randomIndex]);
-    }
-
-    bool hasWeapons() const {
-        return !weapons.empty();
+        return true;
     }
 };
 
-// New class: Manages combat between two characters
+// Manages combat between two characters
 class BattleManager {
 public:
-    int runBattle(Character& fighter1, Character& fighter2, Player& player) {
-        std::cout << "Game started: " << fighter1.getName() << " vs " << fighter2.getName() << "\n";
+    // Tell the battle manager to run a battle - it orchestrates the flow
+    int executeBattle(Character& fighter1, Character& fighter2, Player& playerRef) {
+        announceBattleStart(fighter1, fighter2);
 
-        // Check if both have weapons
-        if (!fighter1.hasWeapon() || !fighter2.hasWeapon()) {
-            std::cout << "Weapon not equipped. Cannot fight.\n";
+        if (!validateBattleReadiness(fighter1, fighter2)) {
             return -1;
         }
 
-        // Battle loop
-        while (fighter1.isAlive() && fighter2.isAlive()) {
-            fighter1.attackTarget(fighter2);
-            
-            if (!fighter2.isAlive()) break;
+        conductBattle(fighter1, fighter2, playerRef);
 
-            fighter2.attackTarget(fighter1);
-
-            // Apply random healing to player
-            applyRandomHealing(player);
-        }
-
-        return determineWinner(fighter1, fighter2);
+        return announceBattleResult(fighter1, fighter2);
     }
 
 private:
-    void applyRandomHealing(Player& player) {
-        int healAmount = std::rand() % 50 + 1;
-        player.heal(healAmount);
+    void announceBattleStart(Character& fighter1, Character& fighter2) {
+        std::cout << "Game started: " << fighter1.getName() << " vs " << fighter2.getName() << "\n";
     }
 
-    int determineWinner(Character& fighter1, Character& fighter2) {
+    // Ask minimal question to validate - but don't extract and decide externally
+    bool validateBattleReadiness(Character& fighter1, Character& fighter2) {
+        if (!fighter1.hasWeapon() || !fighter2.hasWeapon()) {
+            std::cout << "Weapon not equipped. Cannot fight.\n";
+            return false;
+        }
+        return true;
+    }
+
+    void conductBattle(Character& fighter1, Character& fighter2, Player& playerRef) {
+        while (fighter1.isAlive() && fighter2.isAlive()) {
+            // Tell fighter1 to attack
+            fighter1.performAttack(fighter2);
+            
+            if (!fighter2.isAlive()) break;
+
+            // Tell fighter2 to attack
+            fighter2.performAttack(fighter1);
+
+            // Tell player to heal itself
+            playerRef.applyRandomHealing();
+        }
+    }
+
+    int announceBattleResult(Character& fighter1, Character& fighter2) {
         if (!fighter1.isAlive()) {
-            std::cout << fighter1.getName() << " has been defeated.\n";
+            fighter1.announceDefeat();
             return 1;
         }
         else if (!fighter2.isAlive()) {
-            std::cout << fighter2.getName() << " has been defeated.\n";
+            fighter2.announceDefeat();
             return 0;
         }
         
@@ -161,7 +184,7 @@ private:
     }
 };
 
-// Simplified GameManager - now only coordinates between managers
+// Coordinates between managers
 class GameManager {
 private:
     Player player;
@@ -180,15 +203,15 @@ public:
     }
 
     void equipPlayerWeapon(int weaponIndex) {
-        weaponManager.equipWeapon(player, weaponIndex);
+        weaponManager.equipWeaponToCharacter(player, weaponIndex);
     }
 
     void equipEnemyWeapon(int weaponIndex) {
-        weaponManager.equipWeapon(enemy, weaponIndex);
+        weaponManager.equipWeaponToCharacter(enemy, weaponIndex);
     }
 
     int startGame() {
-        return battleManager.runBattle(player, enemy, player);
+        return battleManager.executeBattle(player, enemy, player);
     }
 };
 
