@@ -20,7 +20,6 @@ public:
     void setDamage(int newDamage) { damage = newDamage; }
 };
 
-
 class Character {
 protected:
     std::string name;
@@ -33,31 +32,46 @@ public:
         : name(characterName), health(characterHealth), 
           strength(characterStrength), currentWeapon(nullptr) {}
 
-    Weapon* getWeapon() const {
-        return currentWeapon;
-    }
-
     void setWeapon(Weapon* weapon) {
         currentWeapon = weapon;
-    }
-
-    int getStrength() const {
-        return strength;
     }
 
     std::string getName() const { return name; }
     
     int getHealth() const { return health; }
 
-    void setHealth(int newHealth) { health = newHealth; }
+    bool isAlive() const {
+        return health > 0;
+    }
+
+    bool hasWeapon() const {
+        return currentWeapon != nullptr;
+    }
+
+    // Character knows how to attack another character
+    void attackTarget(Character& target) {
+        if (!currentWeapon) return;
+        
+        int totalDamage = currentWeapon->getDamage() * strength;
+        std::cout << name << " attacks " << target.getName() 
+                  << " with " << currentWeapon->getName() << "\n";
+        target.takeDamage(totalDamage);
+        std::cout << target.getName() << " health: " << target.getHealth() << "\n";
+    }
 
     void takeDamage(int damage) {
         health -= damage;
         if (health < 0) health = 0;
-        
         std::cout << name << " take damage " << damage << "\n";
     }
 
+    // Character knows how to heal itself
+    void heal(int amount) {
+        if (health > 0) {
+            health += amount;
+            std::cout << name << " healed by " << amount << " points.\n";
+        }
+    }
 };
 
 class Player : public Character {
@@ -92,39 +106,35 @@ public:
     int startGame() {
         std::cout << "Game started: " << player.getName() << " vs " << enemy.getName() << "\n";
 
+        // Check if both have weapons
+        if (!player.hasWeapon() || !enemy.hasWeapon()) {
+            std::cout << "Weapon not equipped. Cannot fight.\n";
+            return -1;
+        }
+
         // Player and enemy health checks
-        while (player.getHealth() > 0 && enemy.getHealth() > 0) {
-            Weapon* playerWeapon = player.getWeapon();
-            Weapon * enemyWeapon = enemy.getWeapon();
+        while (player.isAlive() && enemy.isAlive()) {
+            // Player attacks enemy - character handles its own attack
+            player.attackTarget(enemy);
+            
+            if (!enemy.isAlive()) break;
 
-            if (playerWeapon != nullptr && enemyWeapon != nullptr) {
-                std::cout << player.getName() << " attacks " << enemy.getName() << " with " << playerWeapon->getName() << "\n";
-                enemy.takeDamage(playerWeapon->getDamage() * player.getStrength());
-                std::cout << enemy.getName() << " health: " << enemy.getHealth() << "\n";
+            // Enemy attacks player - character handles its own attack
+            enemy.attackTarget(player);
 
-                std::cout << enemy.getName() << " attacks " << player.getName() << " with " << enemyWeapon->getName() << "\n";
-                player.takeDamage(enemyWeapon->getDamage() * enemy.getStrength());
-                std::cout << player.getName() << " health: " << player.getHealth() << "\n";
-            }
-            else {
-                std::cout << "Weapon not equipped. Cannot fight.\n";
-                break;
-            }
             randomlyHealPlayer();
         }
-        equipRandomWeapon(player);
-        equipRandomWeapon(enemy);
 
-
-        
-        if (player.getHealth() <= 0) {
+        if (!player.isAlive()) {
             std::cout << player.getName() << " has been defeated.\n";
             return 1;
         }
-        else if (enemy.getHealth() <= 0) {
+        else if (!enemy.isAlive()) {
             std::cout << enemy.getName() << " has been defeated.\n";
             return 0;
         }
+        
+        return -1;
     }
 
     void equipPlayerWeapon(int weaponIndex) {
@@ -139,9 +149,7 @@ public:
         }
     }
 
-
     Weapon* equipRandomWeapon(Character& character) {
-
         if (weapons.empty()) {
             return nullptr;
         }
@@ -153,14 +161,7 @@ public:
 
     void randomlyHealPlayer() {
         int healAmount = std::rand() % 50 + 1; // heal between 1 and 50 point
-        healPlayer(healAmount);
-    }
-
-    void healPlayer(int amount) {
-        if (player.getHealth() > 0) {
-            player.setHealth(player.getHealth() + amount);
-            std::cout << "Player healed by " << amount << " points.\n";
-        }
+        player.heal(healAmount);
     }
 };
 
