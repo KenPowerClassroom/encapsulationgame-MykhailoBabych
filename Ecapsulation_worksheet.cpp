@@ -84,84 +84,111 @@ class Enemy : public Character {
 public:
     Enemy(const std::string& EnemyName, int EnemyHealth, int characterStrength)
         :Character(EnemyName, EnemyHealth, characterStrength) {}
-
 };
 
-class GameManager {
+// New class: Manages weapon inventory
+class WeaponManager {
 private:
-    Player player;
-    Enemy enemy;
     std::vector<Weapon> weapons;
 
 public:
-    GameManager(const Player& p, const Enemy& e)
-        : player(p), enemy(e) {
-        std::srand(std::time(0)); // Seed for random number generation
-    }
-
     void addWeapon(const Weapon& weapon) {
         weapons.push_back(weapon);
     }
 
-    int startGame() {
-        std::cout << "Game started: " << player.getName() << " vs " << enemy.getName() << "\n";
+    void equipWeapon(Character& character, int weaponIndex) {
+        if (weaponIndex >= 0 && weaponIndex < weapons.size()) {
+            character.setWeapon(&weapons[weaponIndex]);
+        }
+    }
+
+    void equipRandomWeapon(Character& character) {
+        if (weapons.empty()) return;
+        
+        int randomIndex = std::rand() % weapons.size();
+        character.setWeapon(&weapons[randomIndex]);
+    }
+
+    bool hasWeapons() const {
+        return !weapons.empty();
+    }
+};
+
+// New class: Manages combat between two characters
+class BattleManager {
+public:
+    int runBattle(Character& fighter1, Character& fighter2, Player& player) {
+        std::cout << "Game started: " << fighter1.getName() << " vs " << fighter2.getName() << "\n";
 
         // Check if both have weapons
-        if (!player.hasWeapon() || !enemy.hasWeapon()) {
+        if (!fighter1.hasWeapon() || !fighter2.hasWeapon()) {
             std::cout << "Weapon not equipped. Cannot fight.\n";
             return -1;
         }
 
-        // Player and enemy health checks
-        while (player.isAlive() && enemy.isAlive()) {
-            // Player attacks enemy - character handles its own attack
-            player.attackTarget(enemy);
+        // Battle loop
+        while (fighter1.isAlive() && fighter2.isAlive()) {
+            fighter1.attackTarget(fighter2);
             
-            if (!enemy.isAlive()) break;
+            if (!fighter2.isAlive()) break;
 
-            // Enemy attacks player - character handles its own attack
-            enemy.attackTarget(player);
+            fighter2.attackTarget(fighter1);
 
-            randomlyHealPlayer();
+            // Apply random healing to player
+            applyRandomHealing(player);
         }
 
-        if (!player.isAlive()) {
-            std::cout << player.getName() << " has been defeated.\n";
+        return determineWinner(fighter1, fighter2);
+    }
+
+private:
+    void applyRandomHealing(Player& player) {
+        int healAmount = std::rand() % 50 + 1;
+        player.heal(healAmount);
+    }
+
+    int determineWinner(Character& fighter1, Character& fighter2) {
+        if (!fighter1.isAlive()) {
+            std::cout << fighter1.getName() << " has been defeated.\n";
             return 1;
         }
-        else if (!enemy.isAlive()) {
-            std::cout << enemy.getName() << " has been defeated.\n";
+        else if (!fighter2.isAlive()) {
+            std::cout << fighter2.getName() << " has been defeated.\n";
             return 0;
         }
         
         return -1;
     }
+};
+
+// Simplified GameManager - now only coordinates between managers
+class GameManager {
+private:
+    Player player;
+    Enemy enemy;
+    WeaponManager weaponManager;
+    BattleManager battleManager;
+
+public:
+    GameManager(const Player& p, const Enemy& e)
+        : player(p), enemy(e) {
+        std::srand(std::time(0));
+    }
+
+    void addWeapon(const Weapon& weapon) {
+        weaponManager.addWeapon(weapon);
+    }
 
     void equipPlayerWeapon(int weaponIndex) {
-        if (weaponIndex >= 0 && weaponIndex < weapons.size()) {
-            player.setWeapon(&weapons[weaponIndex]);
-        }
+        weaponManager.equipWeapon(player, weaponIndex);
     }
 
     void equipEnemyWeapon(int weaponIndex) {
-        if (weaponIndex >= 0 && weaponIndex < weapons.size()) {
-            enemy.setWeapon(&weapons[weaponIndex]);
-        }
+        weaponManager.equipWeapon(enemy, weaponIndex);
     }
 
-    Weapon* equipRandomWeapon(Character& character) {
-        if (weapons.empty()) {
-            return nullptr;
-        }
-        int randomIndex = std::rand() % weapons.size();
-        Weapon* selectedWeapon = &weapons[randomIndex];
-        character.setWeapon(selectedWeapon);
-        return selectedWeapon;
-    }
-
-    void randomlyHealPlayer() {
-        int healAmount = std::rand() % 50 + 1; // heal between 1 and 50 point
-        player.heal(healAmount);
+    int startGame() {
+        return battleManager.runBattle(player, enemy, player);
     }
 };
 
