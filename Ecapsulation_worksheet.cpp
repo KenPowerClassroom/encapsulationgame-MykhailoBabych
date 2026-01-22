@@ -20,29 +20,90 @@ public:
     void setDamage(int newDamage) { damage = newDamage; }
 };
 
+class CombatLogger {
+public:
+    void logAttack(const std::string& attackerName, const std::string& targetName, 
+                   const std::string& weaponName) const {
+        std::cout << attackerName << " attacks " << targetName 
+                  << " with " << weaponName << "\n";
+    }
+
+    void logDamage(const std::string& characterName, int damage, int remainingHealth) const {
+        std::cout << characterName << " takes damage " << damage 
+                  << ". Health: " << remainingHealth << "\n";
+    }
+
+    void logHealing(const std::string& characterName, int healAmount, int currentHealth) const {
+        std::cout << characterName << " healed by " << healAmount 
+                  << " points. Health: " << currentHealth << "\n";
+    }
+
+    void logDefeat(const std::string& characterName) const {
+        std::cout << characterName << " has been defeated.\n";
+    }
+
+    void logBattleStart(const std::string& fighter1Name, const std::string& fighter2Name) const {
+        std::cout << "Game started: " << fighter1Name << " vs " << fighter2Name << "\n";
+    }
+
+    void logError(const std::string& message) const {
+        std::cout << message << "\n";
+    }
+};
+
+class HealthManager {
+private:
+    int health;
+    CombatLogger& logger;
+    std::string ownerName;
+
+public:
+    HealthManager(int initialHealth, CombatLogger& combatLogger, const std::string& name)
+        : health(initialHealth), logger(combatLogger), ownerName(name) {}
+
+    bool isAlive() const {
+        return health > 0;
+    }
+
+    int getCurrentHealth() const {
+        return health;
+    }
+
+    void takeDamage(int damage) {
+        health -= damage;
+        if (health < 0) health = 0;
+        logger.logDamage(ownerName, damage, health);
+    }
+
+    void heal(int amount) {
+        if (!isAlive()) return;
+        health += amount;
+        logger.logHealing(ownerName, amount, health);
+    }
+};
+
+// Character now focuses only on combat-related behavior
 class Character {
 protected:
     std::string name;
-    int health;
+    HealthManager healthManager;
     int strength; // multiplier for weapon damage
     Weapon* currentWeapon;
+    CombatLogger& logger;
 
-    // Helper to calculate damage (DRY - used by performAttack)
     int calculateDamage() const {
         if (!currentWeapon) return 0;
         return currentWeapon->getDamage() * strength;
     }
 
-    // Helper to clamp health (DRY - used by receiveDamage and applyHealing)
-    void adjustHealth(int amount) {
-        health += amount;
-        if (health < 0) health = 0;
-    }
-
 public:
-    Character(const std::string& characterName, int characterHealth, int characterStrength)
-        : name(characterName), health(characterHealth), 
-          strength(characterStrength), currentWeapon(nullptr) {}
+    Character(const std::string& characterName, int characterHealth, 
+              int characterStrength, CombatLogger& combatLogger)
+        : name(characterName), 
+          healthManager(characterHealth, combatLogger, characterName),
+          strength(characterStrength), 
+          currentWeapon(nullptr),
+          logger(combatLogger) {}
 
     void setWeapon(Weapon* weapon) {
         currentWeapon = weapon;
@@ -51,49 +112,41 @@ public:
     std::string getName() const { return name; }
 
     bool isAlive() const {
-        return health > 0;
+        return healthManager.isAlive();
     }
 
     bool hasWeapon() const {
         return currentWeapon != nullptr;
     }
 
-    // Tell the character to attack - it handles everything internally
     bool performAttack(Character& target) {
         if (!currentWeapon) return false;
         
         int totalDamage = calculateDamage();
-        std::cout << name << " attacks " << target.getName() 
-                  << " with " << currentWeapon->getName() << "\n";
-        target.receiveDamage(totalDamage);
+        logger.logAttack(name, target.getName(), currentWeapon->getName());
+        target.takeDamage(totalDamage);
         return true;
     }
 
-    // Tell the character to receive damage - it handles the logic
-    void receiveDamage(int damage) {
-        adjustHealth(-damage);
-        std::cout << name << " takes damage " << damage << ". Health: " << health << "\n";
+    void takeDamage(int damage) {
+        healthManager.takeDamage(damage);
     }
 
-    // Tell the character to heal - it decides if healing is valid
     void applyHealing(int amount) {
-        if (!isAlive()) return;
-        adjustHealth(amount);
-        std::cout << name << " healed by " << amount << " points. Health: " << health << "\n";
+        healthManager.heal(amount);
     }
 
-    // Tell the character to announce defeat
     void announceDefeat() const {
-        std::cout << name << " has been defeated.\n";
+        logger.logDefeat(name);
     }
 };
 
 class Player : public Character {
 public:
-    Player(const std::string& playerName, int playerHealth, int characterStrength)
-        :Character(playerName, playerHealth, characterStrength) {}
+    Player(const std::string& playerName, int playerHealth, 
+           int characterStrength, CombatLogger& logger)
+        : Character(playerName, playerHealth, characterStrength, logger) {}
 
-    // Player knows how to apply random healing to itself
     void applyRandomHealing() {
         int healAmount = std::rand() % 50 + 1;
         applyHealing(healAmount);
@@ -102,16 +155,16 @@ public:
 
 class Enemy : public Character {
 public:
-    Enemy(const std::string& EnemyName, int EnemyHealth, int characterStrength)
-        :Character(EnemyName, EnemyHealth, characterStrength) {}
+    Enemy(const std::string& enemyName, int enemyHealth, 
+          int characterStrength, CombatLogger& logger)
+        : Character(enemyName, enemyHealth, characterStrength, logger) {}
 };
 
-// Manages weapon inventory
+// Weapon inventory management - single responsibility
 class WeaponManager {
 private:
     std::vector<Weapon> weapons;
 
-    // Helper to validate weapon index (DRY)
     bool isValidWeaponIndex(int weaponIndex) const {
         return weaponIndex >= 0 && weaponIndex < weapons.size();
     }
@@ -125,7 +178,6 @@ public:
         return weapons.empty();
     }
 
-    // Tell the manager to equip a weapon - it handles validation
     bool equipWeaponToCharacter(Character& character, int weaponIndex) {
         if (!isValidWeaponIndex(weaponIndex)) return false;
         
@@ -133,7 +185,6 @@ public:
         return true;
     }
 
-    // Tell the manager to equip a random weapon
     bool equipRandomWeaponToCharacter(Character& character) {
         if (isEmpty()) return false;
         
@@ -142,57 +193,43 @@ public:
     }
 };
 
-// Manages combat between two characters
+class BattleValidator {
+private:
+    CombatLogger& logger;
+
+public:
+    BattleValidator(CombatLogger& combatLogger) : logger(combatLogger) {}
+
+    bool validateBattleReadiness(const Character& fighter1, const Character& fighter2) const {
+        if (!fighter1.hasWeapon() || !fighter2.hasWeapon()) {
+            logger.logError("Weapon not equipped. Cannot fight.");
+            return false;
+        }
+        return true;
+    }
+};
+
+// Combat execution - single responsibility
 class BattleManager {
 private:
-    // Helper to execute a combat round (DRY - avoids repeating attack logic)
+    CombatLogger& logger;
+    BattleValidator validator;
+
     bool executeCombatRound(Character& attacker, Character& defender) {
         attacker.performAttack(defender);
         return defender.isAlive();
     }
 
-public:
-    // Tell the battle manager to run a battle - it orchestrates the flow
-    int executeBattle(Character& fighter1, Character& fighter2, Player& playerRef) {
-        announceBattleStart(fighter1, fighter2);
-
-        if (!validateBattleReadiness(fighter1, fighter2)) {
-            return -1;
-        }
-
-        conductBattle(fighter1, fighter2, playerRef);
-
-        return announceBattleResult(fighter1, fighter2);
-    }
-
-private:
-    void announceBattleStart(const Character& fighter1, const Character& fighter2) const {
-        std::cout << "Game started: " << fighter1.getName() << " vs " << fighter2.getName() << "\n";
-    }
-
-    // Ask minimal question to validate - but don't extract and decide externally
-    bool validateBattleReadiness(const Character& fighter1, const Character& fighter2) const {
-        if (!fighter1.hasWeapon() || !fighter2.hasWeapon()) {
-            std::cout << "Weapon not equipped. Cannot fight.\n";
-            return false;
-        }
-        return true;
-    }
-
     void conductBattle(Character& fighter1, Character& fighter2, Player& playerRef) {
         while (fighter1.isAlive() && fighter2.isAlive()) {
-            // Execute fighter1's attack
             if (!executeCombatRound(fighter1, fighter2)) break;
-
-            // Execute fighter2's attack
             if (!executeCombatRound(fighter2, fighter1)) break;
 
-            // Tell player to heal itself
             playerRef.applyRandomHealing();
         }
     }
 
-    int announceBattleResult(Character& fighter1, Character& fighter2) const {
+    int determineBattleOutcome(Character& fighter1, Character& fighter2) const {
         if (!fighter1.isAlive()) {
             fighter1.announceDefeat();
             return 1;
@@ -204,24 +241,43 @@ private:
         
         return -1;
     }
+
+public:
+    BattleManager(CombatLogger& combatLogger) 
+        : logger(combatLogger), validator(combatLogger) {}
+
+    int executeBattle(Character& fighter1, Character& fighter2, Player& playerRef) {
+        logger.logBattleStart(fighter1.getName(), fighter2.getName());
+
+        if (!validator.validateBattleReadiness(fighter1, fighter2)) {
+            return -1;
+        }
+
+        conductBattle(fighter1, fighter2, playerRef);
+
+        return determineBattleOutcome(fighter1, fighter2);
+    }
 };
 
-// Coordinates between managers
+// Game coordination - single responsibility: orchestrate game components
 class GameManager {
 private:
+    CombatLogger logger;
     Player player;
     Enemy enemy;
     WeaponManager weaponManager;
     BattleManager battleManager;
 
-    // Helper method to equip any character (DRY - eliminates equipPlayerWeapon/equipEnemyWeapon duplication)
     void equipCharacter(Character& character, int weaponIndex) {
         weaponManager.equipWeaponToCharacter(character, weaponIndex);
     }
 
 public:
-    GameManager(const Player& p, const Enemy& e)
-        : player(p), enemy(e) {
+    GameManager(const std::string& playerName, int playerHealth, int playerStrength,
+                const std::string& enemyName, int enemyHealth, int enemyStrength)
+        : player(playerName, playerHealth, playerStrength, logger),
+          enemy(enemyName, enemyHealth, enemyStrength, logger),
+          battleManager(logger) {
         std::srand(std::time(0));
     }
 
@@ -244,26 +300,20 @@ public:
 
 // Main Function
 int main() {
-
-    Player player("Hero", 300, 2);
-    Enemy enemy("Goblin", 150, 4);
+    GameManager game("Hero", 300, 2, "Goblin", 150, 4);
 
     Weapon sword("Sword", 15);
     Weapon axe("Axe", 20);
     Weapon dagger("Dagger", 10);
     Weapon bow("Bow", 25);
 
-    GameManager game(player, enemy);
-
     game.addWeapon(sword);
     game.addWeapon(axe);
     game.addWeapon(dagger);
     game.addWeapon(bow);
 
-    // Equip weapons
     game.equipPlayerWeapon(0); // Equip sword to player
     game.equipEnemyWeapon(1);  // Equip axe to enemy
-
 
     game.startGame();
 
